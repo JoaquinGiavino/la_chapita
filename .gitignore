@@ -1,0 +1,94 @@
+# Flutter/Dart
+.dart_tool/
+.packages/
+pubspec.lock
+build/
+flutter_*.png
+.dart_tool/
+.pub/
+*.lock
+*.log
+*.pid
+*.tmp
+
+# Android
+*.iml
+*.ipr
+*.iws
+.idea/
+gradle/
+local.properties
+*.keystore
+
+# iOS
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/Flutter/Flutter.framework
+**/ios/**/Flutter/Generated.xcconfig
+**/ios/**/Podfile.lock
+**/ios/**/Podfile
+**/ios/**/.generated/
+**/ios/**/Runner/Generated.xcconfig
+**/ios/**/Flutter/ephemeral/
+
+# Windows
+**/windows/flutter/ephemeral/
+**/windows/runner/Debug/
+**/windows/runner/Release/
+**/windows/x64/
+**/windows/CMakeCache.txt
+**/windows/CMakeFiles/
+*.exe
+*.msix
+*.pfx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.sln.docstates
+
+# macOS
+**/macos/Flutter/ephemeral/
+**/macos/Flutter/Generated.xcconfig
+**/macos/Flutter/flutter_export_environment.sh
+**/macos/Runner.xcworkspace/
+**/macos/Pods/
+
+# Web
+**/web/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Misc
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+.env
+*.log
+
+# Certificates (importante - evitar subir certificados)
+*.pfx
+*.p12
+certificate.pem
+private_key.pem
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Temp files
+temp/
+tmp/
+*.tmp
+*.bak
