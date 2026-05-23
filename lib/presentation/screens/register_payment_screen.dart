@@ -9,7 +9,10 @@ import '../../core/utils/currency_formatter.dart';
 import '../../domain/entities/debt.dart';
 import '../../domain/entities/payment.dart';
 import '../../domain/enums/payment_method.dart';
+import '../../domain/entities/sale.dart';
+import '../../data/database/database_helper.dart';
 import '../providers/debt_provider.dart';
+import '../providers/sale_provider.dart';
 import '../widgets/gradient_button.dart';
 
 class RegisterPaymentScreen extends ConsumerStatefulWidget {
@@ -100,10 +103,12 @@ class _RegisterPaymentScreenState
 
     final amount =
         double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    if (amount <= 0) return;
 
     setState(() => _isSaving = true);
 
     try {
+      // ── 1. Registrar el pago en la tabla payments (igual que antes) ──
       final payment = Payment.create(
         debtId: widget.debt.id,
         amount: amount,
@@ -122,13 +127,53 @@ class _RegisterPaymentScreenState
             currentPendingAmount: _pendingAmount,
           );
 
+      // ── 2. Registrar el pago como venta en la tabla sales ─────────────
+      final saleRepo = ref.read(saleRepositoryProvider);
+      final existingSale = await saleRepo.getSaleByDebtId(widget.debt.id);
+
+      if (existingSale != null) {
+        // Actualizar la venta existente sumando el pago
+        final newPaid = existingSale.paidAmount + amount;
+        await saleRepo.updatePaidAmount(
+          saleId: existingSale.id,
+          newPaidAmount: newPaid,
+          totalAmount: widget.debt.totalAmount,
+        );
+      } else {
+        // Crear una nueva venta vinculada a la deuda
+        final totalPaidSoFar =
+            await DatabaseHelper.instance.getTotalPaidForDebt(widget.debt.id);
+        final pending = (widget.debt.totalAmount - totalPaidSoFar)
+            .clamp(0.0, double.infinity);
+
+        final newSale = Sale(
+          id: 0,
+          date: _paymentDate,
+          productDescription: widget.debt.productDescription,
+          quantity: widget.debt.quantity,
+          unitPrice: widget.debt.unitPrice,
+          totalAmount: widget.debt.totalAmount,
+          paidAmount: totalPaidSoFar,
+          pendingAmount: pending,
+          isFullyPaid: pending <= 0.005,
+          paymentMethod: payment.method.dbValue,
+          clientId: widget.clientId,
+          debtId: widget.debt.id,
+        );
+        await saleRepo.createSale(newSale);
+      }
+
+      // ── 3. Invalidar el provider de ventas para que el dashboard actualice ──
+      ref.invalidate(salesStatsProvider);
+      ref.invalidate(salesProvider);
+
       if (mounted) {
         final isFullyPaid = amount >= _pendingAmount;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               isFullyPaid
-                  ? '✅ Deuda saldada completamente'
+                  ? '✅ Deuda saldada y venta registrada'
                   : 'Pago registrado. Pendiente: ${CurrencyFormatter.format(_pendingAmount - amount)}',
               style: AppTypography.bodyMedium.copyWith(color: AppColors.white),
             ),

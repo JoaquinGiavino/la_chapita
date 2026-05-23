@@ -7,7 +7,6 @@ import '../../core/theme/app_typography.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../domain/entities/client.dart';
 import '../../domain/entities/debt.dart';
-import '../../domain/entities/payment.dart';
 import '../providers/client_provider.dart';
 import '../providers/debt_provider.dart';
 import '../widgets/brand_header.dart';

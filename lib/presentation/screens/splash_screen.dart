@@ -36,32 +36,24 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Logo
             Image.asset(
               'assets/images/logo.png',
               width: 120,
               height: 120,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => _FallbackLogo(),
-            )
-                .animate()
-                .fadeIn(duration: 800.ms, curve: Curves.easeOut)
-                .scale(
-                  begin: const Offset(0.8, 0.8),
-                  end: const Offset(1.0, 1.0),
-                  duration: 800.ms,
-                  curve: Curves.easeOut,
-                ),
+            ).animate().fadeIn(duration: 800.ms, curve: Curves.easeOut).scale(
+              begin: const Offset(0.8, 0.8),
+              end: const Offset(1.0, 1.0),
+              duration: 800.ms,
+              curve: Curves.easeOut,
+            ),
             const SizedBox(height: 28),
-            // Nombre
             Text('La Chapita', style: AppTypography.displayMedium)
-                .animate()
-                .fadeIn(delay: 500.ms, duration: 600.ms)
-                .slideY(begin: 0.2, end: 0, delay: 500.ms, duration: 600.ms),
+                .animate().fadeIn(delay: 500.ms, duration: 600.ms).slideY(begin: 0.2, end: 0, delay: 500.ms, duration: 600.ms),
             const SizedBox(height: 8),
-            // Subtítulo
             Text(
-              'Gestión de deudores',
+              'Gestión de ventas y deudores',
               style: AppTypography.bodyMediumOnDark.copyWith(
                 color: AppColors.vanilla.withOpacity(0.55),
                 letterSpacing: 2,
@@ -86,8 +78,7 @@ class _FallbackLogo extends StatelessWidget {
         border: Border.all(color: AppColors.vanilla.withOpacity(0.3), width: 2),
       ),
       child: Center(
-        child: Text('LC',
-            style: AppTypography.displayMedium.copyWith(fontSize: 36)),
+        child: Text('LC', style: AppTypography.displayMedium.copyWith(fontSize: 36)),
       ),
     );
   }

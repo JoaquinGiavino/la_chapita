@@ -18,11 +18,19 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getApplicationDocumentsDirectory();
     final path = join(dbPath.path, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2, // <-- subimos versión para la migración
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+      onOpen: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+    );
   }
 
+  // ─── Creación inicial (instalaciones nuevas) ──────────
   Future<void> _createDB(Database db, int version) async {
-    // Tabla de clientes
     await db.execute('''
       CREATE TABLE clients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +41,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de deudas
     await db.execute('''
       CREATE TABLE debts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +56,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de pagos
     await db.execute('''
       CREATE TABLE payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,9 +67,42 @@ class DatabaseHelper {
         FOREIGN KEY (debtId) REFERENCES debts (id) ON DELETE CASCADE
       )
     ''');
+
+    // Nueva tabla sales — creada desde cero en instalaciones nuevas
+    await db.execute(_createSalesTableSQL);
   }
 
-  // ─── Clientes ─────────────────────────────────────────
+  // ─── Migración para usuarios que ya tenían la app ─────
+  // Cuando alguien actualiza de v1 a v2, solo se agrega la tabla sales
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(_createSalesTableSQL);
+    }
+  }
+
+  // SQL de la tabla sales separado para reusar en _createDB y _upgradeDB
+  static const String _createSalesTableSQL = '''
+    CREATE TABLE IF NOT EXISTS sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      productDescription TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unitPrice REAL NOT NULL,
+      totalAmount REAL NOT NULL,
+      paidAmount REAL NOT NULL DEFAULT 0,
+      pendingAmount REAL NOT NULL DEFAULT 0,
+      paymentMethod TEXT,
+      clientId INTEGER,
+      debtId INTEGER,
+      isFullyPaid INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (clientId) REFERENCES clients (id) ON DELETE SET NULL,
+      FOREIGN KEY (debtId) REFERENCES debts (id) ON DELETE SET NULL
+    )
+  ''';
+
+  // ════════════════════════════════════════════════════════
+  // ─── CLIENTES ────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
 
   Future<int> insertClient(Map<String, dynamic> client) async {
     final db = await database;
@@ -92,34 +131,25 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>?> getClientById(int id) async {
     final db = await database;
-    final result = await db.query(
-      'clients',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final result =
+        await db.query('clients', where: 'id = ?', whereArgs: [id]);
     return result.isNotEmpty ? result.first : null;
   }
 
   Future<int> updateClient(Map<String, dynamic> client) async {
     final db = await database;
-    return await db.update(
-      'clients',
-      client,
-      where: 'id = ?',
-      whereArgs: [client['id']],
-    );
+    return await db.update('clients', client,
+        where: 'id = ?', whereArgs: [client['id']]);
   }
 
   Future<int> deleteClient(int id) async {
     final db = await database;
-    return await db.delete(
-      'clients',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('clients', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ─── Deudas ──────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
+  // ─── DEUDAS ──────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
 
   Future<int> insertDebt(Map<String, dynamic> debt) async {
     final db = await database;
@@ -138,7 +168,8 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getOldDebts(int days) async {
     final db = await database;
-    final cutoff = DateTime.now().subtract(Duration(days: days)).toIso8601String();
+    final cutoff =
+        DateTime.now().subtract(Duration(days: days)).toIso8601String();
     return await db.query(
       'debts',
       where: 'isPaid = 0 AND date <= ?',
@@ -149,24 +180,18 @@ class DatabaseHelper {
 
   Future<int> updateDebt(Map<String, dynamic> debt) async {
     final db = await database;
-    return await db.update(
-      'debts',
-      debt,
-      where: 'id = ?',
-      whereArgs: [debt['id']],
-    );
+    return await db.update('debts', debt,
+        where: 'id = ?', whereArgs: [debt['id']]);
   }
 
   Future<int> deleteDebt(int id) async {
     final db = await database;
-    return await db.delete(
-      'debts',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('debts', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ─── Pagos ───────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
+  // ─── PAGOS ───────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
 
   Future<int> insertPayment(Map<String, dynamic> payment) async {
     final db = await database;
@@ -194,10 +219,194 @@ class DatabaseHelper {
 
   Future<int> deletePayment(int id) async {
     final db = await database;
-    return await db.delete(
-      'payments',
-      where: 'id = ?',
-      whereArgs: [id],
+    return await db.delete('payments', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ════════════════════════════════════════════════════════
+  // ─── VENTAS ──────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════
+
+  /// Inserta una venta y retorna el ID generado.
+  Future<int> insertSale(Map<String, dynamic> sale) async {
+    final db = await database;
+    return await db.insert('sales', sale);
+  }
+
+  /// Todas las ventas ordenadas por fecha descendente.
+  Future<List<Map<String, dynamic>>> getAllSales() async {
+    final db = await database;
+    return await db.query('sales', orderBy: 'date DESC');
+  }
+
+  /// Ventas de un rango de fechas (para stats del dashboard).
+  /// [from] y [to] en formato ISO8601.
+  Future<List<Map<String, dynamic>>> getSalesByDateRange(
+    String from,
+    String to,
+  ) async {
+    final db = await database;
+    return await db.query(
+      'sales',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [from, to],
+      orderBy: 'date DESC',
     );
   }
+
+  /// Total cobrado en un rango de fechas (solo paidAmount).
+  Future<double> getTotalSalesAmount(String from, String to) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT SUM(paidAmount) as total FROM sales WHERE date >= ? AND date <= ?',
+      [from, to],
+    );
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// Total pendiente de ventas con deuda (pendingAmount > 0).
+  Future<double> getTotalPendingSalesAmount() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT SUM(pendingAmount) as total FROM sales WHERE isFullyPaid = 0',
+    );
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// Ventas de hoy.
+  Future<List<Map<String, dynamic>>> getSalesToday() async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day)
+        .toIso8601String();
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59)
+        .toIso8601String();
+    return getSalesByDateRange(from, to);
+  }
+
+  /// Ventas de esta semana (lunes a hoy).
+  Future<List<Map<String, dynamic>>> getSalesThisWeek() async {
+    final now = DateTime.now();
+    final monday =
+        now.subtract(Duration(days: now.weekday - 1));
+    final from =
+        DateTime(monday.year, monday.month, monday.day).toIso8601String();
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59)
+        .toIso8601String();
+    return getSalesByDateRange(from, to);
+  }
+
+  /// Ventas de este mes.
+  Future<List<Map<String, dynamic>>> getSalesThisMonth() async {
+    final now = DateTime.now();
+    final from =
+        DateTime(now.year, now.month, 1).toIso8601String();
+    final to = DateTime(now.year, now.month + 1, 0, 23, 59, 59)
+        .toIso8601String();
+    return getSalesByDateRange(from, to);
+  }
+
+  /// Stats resumidas del dashboard: hoy / semana / mes.
+  Future<SalesDashboardStats> getSalesDashboardStats() async {
+    final now = DateTime.now();
+
+    // Hoy
+    final todayFrom =
+        DateTime(now.year, now.month, now.day).toIso8601String();
+    final todayTo = DateTime(now.year, now.month, now.day, 23, 59, 59)
+        .toIso8601String();
+
+    // Esta semana
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final weekFrom =
+        DateTime(monday.year, monday.month, monday.day).toIso8601String();
+
+    // Este mes
+    final monthFrom =
+        DateTime(now.year, now.month, 1).toIso8601String();
+
+    final db = await database;
+
+    Future<double> sum(String from, String to) async {
+      final r = await db.rawQuery(
+        'SELECT SUM(paidAmount) as t FROM sales WHERE date >= ? AND date <= ?',
+        [from, to],
+      );
+      return (r.first['t'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    Future<int> count(String from, String to) async {
+      final r = await db.rawQuery(
+        'SELECT COUNT(*) as c FROM sales WHERE date >= ? AND date <= ?',
+        [from, to],
+      );
+      return (r.first['c'] as num?)?.toInt() ?? 0;
+    }
+
+    final end = todayTo;
+
+    return SalesDashboardStats(
+      todayAmount: await sum(todayFrom, todayTo),
+      todayCount: await count(todayFrom, todayTo),
+      weekAmount: await sum(weekFrom, end),
+      weekCount: await count(weekFrom, end),
+      monthAmount: await sum(monthFrom, end),
+      monthCount: await count(monthFrom, end),
+    );
+  }
+
+  /// Actualiza el paidAmount y pendingAmount de una venta
+  /// (cuando se registra un pago parcial de la deuda asociada).
+  Future<int> updateSalePaidAmount({
+    required int saleId,
+    required double newPaidAmount,
+    required double totalAmount,
+  }) async {
+    final db = await database;
+    final pending = (totalAmount - newPaidAmount).clamp(0.0, double.infinity);
+    return await db.update(
+      'sales',
+      {
+        'paidAmount': newPaidAmount,
+        'pendingAmount': pending,
+        'isFullyPaid': pending <= 0.005 ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+  }
+
+  /// Obtiene la venta asociada a una deuda específica (si existe).
+  Future<Map<String, dynamic>?> getSaleByDebtId(int debtId) async {
+    final db = await database;
+    final result = await db.query(
+      'sales',
+      where: 'debtId = ?',
+      whereArgs: [debtId],
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  /// Elimina una venta por ID.
+  Future<int> deleteSale(int id) async {
+    final db = await database;
+    return await db.delete('sales', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
+// ─── Value Object para stats del dashboard ─────────────
+class SalesDashboardStats {
+  const SalesDashboardStats({
+    required this.todayAmount,
+    required this.todayCount,
+    required this.weekAmount,
+    required this.weekCount,
+    required this.monthAmount,
+    required this.monthCount,
+  });
+
+  final double todayAmount;
+  final int todayCount;
+  final double weekAmount;
+  final int weekCount;
+  final double monthAmount;
+  final int monthCount;
 }

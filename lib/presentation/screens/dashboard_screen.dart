@@ -4,17 +4,23 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/currency_formatter.dart';
+import '../../core/utils/date_formatter.dart';
+import '../../domain/entities/sale.dart';          
 import '../providers/dashboard_provider.dart';
+import '../providers/sale_provider.dart';
 import '../widgets/brand_header.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/alert_banner.dart';
 import '../widgets/client_tile.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/sales_stats_section.dart';
 import 'clients_list_screen.dart';
 import 'client_detail_screen.dart';
 import 'add_client_screen.dart';
 import 'add_debt_screen.dart';
+import 'add_sale_screen.dart';
+import 'sales_list_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -28,12 +34,25 @@ class DashboardScreen extends ConsumerWidget {
         children: [
           BrandHeader(
             showSubtitle: true,
-            trailing: IconButton(
-              icon: Icon(PhosphorIcons.users(PhosphorIconsStyle.regular),
-                  color: AppColors.vanilla),
-              tooltip: 'Ver todos los clientes',
-              onPressed: () => Navigator.of(context)
-                  .push(_fade(const ClientsListScreen())),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular),
+                      color: AppColors.vanilla),
+                  tooltip: 'Ventas',
+                  onPressed: () => Navigator.of(context).push(
+                    _fade(const SalesListScreen()),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(PhosphorIcons.users(PhosphorIconsStyle.regular),
+                      color: AppColors.vanilla),
+                  tooltip: 'Ver todos los clientes',
+                  onPressed: () => Navigator.of(context)
+                      .push(_fade(const ClientsListScreen())),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -65,13 +84,23 @@ class _Body extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StatsRow(summary: summary),
+          // Sección de Ventas (grande, principal)
+          const SalesStatsSection(),
           const SizedBox(height: 24),
+          _RecentSalesSection(),
+          const SizedBox(height: 32),
+          
+          // Sección de Deudores (compacta)
+          Text('Resumen de Deudores',
+              style: AppTypography.headlineMediumOnDark.copyWith(fontSize: 18)),
+          const SizedBox(height: 12),
+          _StatsRow(summary: summary),
+          const SizedBox(height: 16),
           if (summary.hasAlerts) ...[
             _AlertsSection(summary: summary),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
           ],
-          _RecentSection(summary: summary),
+          _RecentDebtorsSection(summary: summary),
           const SizedBox(height: 80),
         ],
       ),
@@ -79,7 +108,169 @@ class _Body extends StatelessWidget {
   }
 }
 
-// ── Stats ─────────────────────────────────────────────
+// ─── Últimas Ventas ──────────────────────────────────
+
+class _RecentSalesSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final salesAsync = ref.watch(salesProvider);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Últimas Ventas',
+                style: AppTypography.headlineMediumOnDark.copyWith(fontSize: 18)),
+            TextButton(
+              onPressed: () => Navigator.of(context)
+                  .push(_fade(const SalesListScreen())),
+              child: const Text('Ver todas'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        salesAsync.when(
+          loading: () => const ShimmerLoading(itemCount: 3),
+          error: (e, _) => Text('Error: $e', style: AppTypography.bodySmall),
+          data: (sales) {
+            if (sales.isEmpty) {
+              return EmptyState(
+                icon: PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular),
+                title: 'Sin ventas recientes',
+                subtitle: 'Registrá tu primera venta con el botón +',
+              );
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: sales.length > 5 ? 5 : sales.length,
+              itemBuilder: (context, i) => _RecentSaleTile(sale: sales[i], index: i),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _RecentSaleTile extends StatelessWidget {
+  const _RecentSaleTile({required this.sale, required this.index});
+  final Sale sale;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.blackSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.vanilla.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular),
+                color: AppColors.vanilla, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${sale.quantity}x ${sale.productDescription}',
+                  style: AppTypography.titleSmall.copyWith(color: AppColors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  DateFormatter.format(sale.date),
+                  style: AppTypography.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                CurrencyFormatter.format(sale.totalAmount),
+                style: AppTypography.amountSmall.copyWith(color: AppColors.vanilla),
+              ),
+              if (!sale.isFullyPaid)
+                Text(
+                  'Debe: ${CurrencyFormatter.format(sale.pendingAmount)}',
+                  style: AppTypography.bodySmall.copyWith(color: AppColors.error),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Últimos Deudores (compacto) ──────────────────────
+
+class _RecentDebtorsSection extends StatelessWidget {
+  const _RecentDebtorsSection({required this.summary});
+  final DashboardSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Últimos Deudores',
+                style: AppTypography.labelLarge.copyWith(color: AppColors.grey)),
+            TextButton(
+              onPressed: () => Navigator.of(context)
+                  .push(_fade(const ClientsListScreen())),
+              child: const Text('Ver todos', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (summary.recentClients.isEmpty)
+          EmptyState(
+            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
+            title: 'Sin deudores aún',
+            subtitle: 'Usá el botón + para agregar tu primer cliente',
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: summary.recentClients.length > 3 ? 3 : summary.recentClients.length,
+            itemBuilder: (context, i) {
+              final s = summary.recentClients[i];
+              return ClientTile(
+                summary: s,
+                animationDelay: Duration(milliseconds: 50 * i),
+                onTap: () => Navigator.of(context).push(
+                    _fade(ClientDetailScreen(clientId: s.client.id))),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+// ── Stats Deudores ───────────────────────────────────
 
 class _StatsRow extends StatelessWidget {
   const _StatsRow({required this.summary});
@@ -87,8 +278,7 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final alertCount =
-        summary.criticalDebtsCount + summary.warningDebtsCount;
+    final alertCount = summary.criticalDebtsCount + summary.warningDebtsCount;
     return Row(
       children: [
         Expanded(
@@ -143,18 +333,13 @@ class _AlertsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Alertas',
-            style:
-                AppTypography.headlineMediumOnDark.copyWith(fontSize: 18)),
-        const SizedBox(height: 12),
         if (summary.hasCriticalAlerts)
           AlertBanner(
             message:
                 '⚠️ Tenés ${summary.criticalDebtsCount} deuda${summary.criticalDebtsCount > 1 ? 's' : ''} con más de 60 días sin pagar',
             severity: AlertSeverity.critical,
             onTap: () => Navigator.of(context).push(
-                _fade(const ClientsListScreen(
-                    initialFilter: ClientFilter.overdue))),
+                _fade(const ClientsListScreen(initialFilter: ClientFilter.overdue))),
           ),
         if (summary.hasCriticalAlerts && summary.hasWarningAlerts)
           const SizedBox(height: 8),
@@ -164,59 +349,7 @@ class _AlertsSection extends StatelessWidget {
                 '${summary.warningDebtsCount} deuda${summary.warningDebtsCount > 1 ? 's' : ''} entre 30 y 60 días sin pagar',
             severity: AlertSeverity.warning,
             onTap: () => Navigator.of(context).push(
-                _fade(const ClientsListScreen(
-                    initialFilter: ClientFilter.overdue))),
-          ),
-      ],
-    );
-  }
-}
-
-// ── Últimos deudores ──────────────────────────────────
-
-class _RecentSection extends StatelessWidget {
-  const _RecentSection({required this.summary});
-  final DashboardSummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Últimos Deudores',
-                style: AppTypography.headlineMediumOnDark
-                    .copyWith(fontSize: 18)),
-            TextButton(
-              onPressed: () => Navigator.of(context)
-                  .push(_fade(const ClientsListScreen())),
-              child: const Text('Ver todos'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (summary.recentClients.isEmpty)
-          EmptyState(
-            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
-            title: 'Sin deudores aún',
-            subtitle: 'Usá el botón + para agregar tu primer cliente',
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: summary.recentClients.length,
-            itemBuilder: (context, i) {
-              final s = summary.recentClients[i];
-              return ClientTile(
-                summary: s,
-                animationDelay: Duration(milliseconds: 50 * i),
-                onTap: () => Navigator.of(context).push(
-                    _fade(ClientDetailScreen(clientId: s.client.id))),
-              );
-            },
+                _fade(const ClientsListScreen(initialFilter: ClientFilter.overdue))),
           ),
       ],
     );
@@ -258,12 +391,20 @@ class _FabState extends State<_Fab> with SingleTickerProviderStateMixin {
       children: [
         if (_open) ...[
           _FabItem(
+            label: 'Nueva Venta',
+            icon: PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular),
+            onTap: () {
+              _toggle();
+              Navigator.of(context).push(_slideUp(const AddSaleScreen()));
+            },
+          ),
+          const SizedBox(height: 8),
+          _FabItem(
             label: 'Nuevo Cliente',
             icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
             onTap: () {
               _toggle();
-              Navigator.of(context)
-                  .push(_slideUp(const AddClientScreen()));
+              Navigator.of(context).push(_slideUp(const AddClientScreen()));
             },
           ),
           const SizedBox(height: 8),
@@ -302,8 +443,7 @@ class _FabItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.blackSurface,
           borderRadius: BorderRadius.circular(10),
@@ -315,8 +455,7 @@ class _FabItem extends StatelessWidget {
             Icon(icon, color: AppColors.vanilla, size: 18),
             const SizedBox(width: 10),
             Text(label,
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.vanilla)),
+                style: AppTypography.labelLarge.copyWith(color: AppColors.vanilla)),
           ],
         ),
       ),
@@ -336,8 +475,7 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline_rounded,
-              color: AppColors.error, size: 48),
+          const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 48),
           const SizedBox(height: 16),
           Text('Error al cargar el dashboard',
               style: AppTypography.titleMediumOnDark),
@@ -352,17 +490,14 @@ class _ErrorView extends StatelessWidget {
 // ── Helpers de navegación ─────────────────────────────
 
 PageRoute<T> _fade<T>(Widget page) => PageRouteBuilder(
-      pageBuilder: (_, a, __) =>
-          FadeTransition(opacity: a, child: page),
+      pageBuilder: (_, a, __) => FadeTransition(opacity: a, child: page),
       transitionDuration: const Duration(milliseconds: 300),
     );
 
 PageRoute<T> _slideUp<T>(Widget page) => PageRouteBuilder(
       pageBuilder: (_, a, __) => SlideTransition(
-        position: Tween<Offset>(
-                begin: const Offset(0, 1), end: Offset.zero)
-            .animate(
-                CurvedAnimation(parent: a, curve: Curves.easeOut)),
+        position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+            .animate(CurvedAnimation(parent: a, curve: Curves.easeOut)),
         child: page,
       ),
       transitionDuration: const Duration(milliseconds: 350),

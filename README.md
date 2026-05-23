@@ -1,17 +1,50 @@
-# la_chapita
+# 🧥 La Chapita - Gestión de Deudores
 
-A new Flutter project.
+Aplicación de escritorio para Windows desarrollada en **Flutter** que permite gestionar clientes, deudas y pagos de una tienda de ropa.
 
-## Getting Started
+## 🎨 Características
 
-This project is a starting point for a Flutter application.
+- ✨ **Interfaz elegante** con paleta de colores vainilla/negro
+- 👥 **Gestión de clientes**: agregar, editar, eliminar y buscar
+- 💰 **Control de deudas**: registrar productos, cantidades y precios
+- 💵 **Pagos parciales**: seguimiento de pagos y saldos pendientes
+- 📊 **Dashboard interactivo** con estadísticas y alertas
+- ⏰ **Alertas automáticas** para deudas vencidas (+30 y +60 días)
+- 💾 **Base de datos local** (SQLite) - sin conexión a internet
+- 🖼️ **Logo y branding** personalizable
 
-A few resources to get you started if this is your first Flutter project:
+## 🛠️ Tecnologías utilizadas
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+| Tecnología | Propósito |
+|------------|-----------|
+| Flutter 3.22.3 | Framework UI multiplataforma |
+| Dart | Lenguaje de programación |
+| SQLite + sqflite | Base de datos local |
+| Riverpod | Manejo de estado |
+| Google Fonts | Tipografías (Cormorant Garamond + Inter) |
+| flutter_animate | Animaciones fluidas |
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 🎨 Paleta de colores
+
+| Color | Código | Uso |
+|-------|--------|-----|
+| Vainilla | `#FFF2B3` | Primario, acentos |
+| Negro | `#111111` | Fondos principales |
+| Blanco | `#FFFFFF` | Texto sobre negro |
+| Gris | `#777777` | Textos secundarios |
+
+## 🚀 Instalación
+
+### Requisitos previos
+
+- Windows 10/11
+- Flutter SDK 3.22.3
+- Visual Studio 2022 (con desarrollo para escritorio C++)
+
+### Clonar y ejecutar
+
+```bash
+git clone https://github.com/tuusuario/la_chapita.git
+cd la_chapita
+flutter pub get
+flutter run -d windows
