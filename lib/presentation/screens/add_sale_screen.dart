@@ -40,6 +40,11 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
   int? _selectedClientId;
   List<Map<String, dynamic>> _clients = [];
 
+  // Estado para cliente nuevo
+  bool _creatingNewClient = false;
+  final _newClientNameCtrl = TextEditingController();
+  final _newClientPhoneCtrl = TextEditingController();
+
   DateTime _saleDate = DateTime.now();
   final _dateCtrl = TextEditingController();
 
@@ -77,6 +82,8 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     _priceCtrl.dispose();
     _paidAmountCtrl.dispose();
     _dateCtrl.dispose();
+    _newClientNameCtrl.dispose();
+    _newClientPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -128,9 +135,15 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
       _showSnack('Seleccioná un cliente para registrar la deuda', isError: true);
       return;
     }
-    if (!_isFullyPaid && _selectedClientId == null) {
-      _showSnack('Seleccioná un cliente de la lista', isError: true);
-      return;
+    if (!_isFullyPaid) {
+      if (!_creatingNewClient && _selectedClientId == null) {
+        _showSnack('Seleccioná un cliente de la lista', isError: true);
+        return;
+      }
+      if (_creatingNewClient && (_newClientNameCtrl.text.trim().isEmpty || _newClientPhoneCtrl.text.trim().isEmpty)) {
+        _showSnack('Completá los datos del nuevo cliente', isError: true);
+        return;
+      }
     }
 
     setState(() => _saving = true);
@@ -157,7 +170,26 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
       }
       // ── Caso 2: Con deuda (parcial o sin pago) ────────
       else {
-        final clientId = _selectedClientId!;
+        int clientId;
+        
+        // Crear cliente nuevo o usar existente
+        if (_creatingNewClient) {
+          final newClientMap = {
+            'name': _newClientNameCtrl.text.trim(),
+            'phone': _newClientPhoneCtrl.text.trim(),
+            'createdAt': DateTime.now().toIso8601String(),
+            'isActive': 1,
+          };
+          clientId = await DatabaseHelper.instance.insertClient(newClientMap);
+          // Recargar lista de clientes para futuras ventas
+          _loadClients();
+          // Invalidar providers para actualizar la lista de clientes
+          ref.invalidate(clientsProvider);
+          ref.invalidate(clientDebtSummariesProvider);
+        } else {
+          clientId = _selectedClientId!;
+        }
+        
         final now = _saleDate.toIso8601String();
 
         // 2a. Crear la deuda en la tabla debts
@@ -346,7 +378,10 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                       if (v) {
                         _hasClient = false;
                         _selectedClientId = null;
+                        _creatingNewClient = false;
                         _paidAmountCtrl.clear();
+                        _newClientNameCtrl.clear();
+                        _newClientPhoneCtrl.clear();
                       }
                     }),
                   ),
@@ -383,21 +418,105 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                     ),
                     const SizedBox(height: 16),
                     _ToggleRow(
-                      label: 'Asociar a un cliente existente',
+                      label: 'Asociar a un cliente',
                       value: _hasClient,
                       onChanged: (v) => setState(() {
                         _hasClient = v;
-                        if (!v) _selectedClientId = null;
+                        if (!v) {
+                          _selectedClientId = null;
+                          _creatingNewClient = false;
+                          _newClientNameCtrl.clear();
+                          _newClientPhoneCtrl.clear();
+                        }
                       }),
                     ),
                     if (_hasClient) ...[
                       const SizedBox(height: 12),
-                      _ClientDropdown(
-                        clients: _clients,
-                        selectedClientId: _selectedClientId,
-                        onChanged: (id) =>
-                            setState(() => _selectedClientId = id),
+                      
+                      // Toggle entre cliente existente y nuevo
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SegmentedButton<bool>(
+                              segments: const [
+                                ButtonSegment(value: false, label: Text('Existente')),
+                                ButtonSegment(value: true, label: Text('Nuevo')),
+                              ],
+                              selected: {_creatingNewClient},
+                              onSelectionChanged: (Set<bool> selected) {
+                                setState(() {
+                                  _creatingNewClient = selected.first;
+                                  if (_creatingNewClient) {
+                                    _selectedClientId = null;
+                                  } else {
+                                    _newClientNameCtrl.clear();
+                                    _newClientPhoneCtrl.clear();
+                                  }
+                                });
+                              },
+                              style: ButtonStyle(
+                                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                                  if (states.contains(WidgetState.selected)) {
+                                    return AppColors.vanilla.withOpacity(0.15);
+                                  }
+                                  return AppColors.blackSurface;
+                                }),
+                                foregroundColor: WidgetStateProperty.all(AppColors.vanilla),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 12),
+                      
+                      // Cliente existente
+                      if (!_creatingNewClient)
+                        _ClientDropdown(
+                          clients: _clients,
+                          selectedClientId: _selectedClientId,
+                          onChanged: (id) => setState(() => _selectedClientId = id),
+                        ),
+                      
+                      // Cliente nuevo
+                      if (_creatingNewClient) ...[
+                        TextFormField(
+                          controller: _newClientNameCtrl,
+                          textCapitalization: TextCapitalization.words,
+                          style: AppTypography.bodyMedium.copyWith(color: AppColors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Nombre completo',
+                            hintText: 'Ej: Juan Pérez',
+                            prefixIcon: Icon(Icons.person),
+                          ),
+                          validator: (v) {
+                            if (_creatingNewClient && (v == null || v.trim().isEmpty)) {
+                              return 'El nombre es requerido';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _newClientPhoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          style: AppTypography.bodyMedium.copyWith(color: AppColors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Teléfono',
+                            hintText: 'Ej: 2236123456',
+                            prefixIcon: Icon(Icons.phone),
+                          ),
+                          validator: (v) {
+                            if (_creatingNewClient && (v == null || v.trim().isEmpty)) {
+                              return 'El teléfono es requerido';
+                            }
+                            if (_creatingNewClient && v!.trim().length < 8) {
+                              return 'Mínimo 8 dígitos';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 16),
                   ],

@@ -5,7 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
-import '../../domain/entities/sale.dart';          
+import '../../domain/entities/sale.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/sale_provider.dart';
 import '../widgets/brand_header.dart';
@@ -21,6 +21,7 @@ import 'add_client_screen.dart';
 import 'add_debt_screen.dart';
 import 'add_sale_screen.dart';
 import 'sales_list_screen.dart';
+import 'sales_report_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -37,6 +38,14 @@ class DashboardScreen extends ConsumerWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton(
+                  icon: Icon(PhosphorIcons.fileText(PhosphorIconsStyle.regular),
+                      color: AppColors.vanilla),
+                  tooltip: 'Reporte de ventas',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SalesReportScreen()),
+                  ),
+                ),
                 IconButton(
                   icon: Icon(PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular),
                       color: AppColors.vanilla),

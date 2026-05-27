@@ -1,3 +1,4 @@
+// presentation/screens/clients_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -24,17 +25,14 @@ extension ClientFilterLabel on ClientFilter {
 }
 
 class ClientsListScreen extends ConsumerStatefulWidget {
-  const ClientsListScreen(
-      {super.key, this.initialFilter = ClientFilter.all});
+  const ClientsListScreen({super.key, this.initialFilter = ClientFilter.all});
   final ClientFilter initialFilter;
 
   @override
-  ConsumerState<ClientsListScreen> createState() =>
-      _ClientsListScreenState();
+  ConsumerState<ClientsListScreen> createState() => _ClientsListScreenState();
 }
 
-class _ClientsListScreenState
-    extends ConsumerState<ClientsListScreen> {
+class _ClientsListScreenState extends ConsumerState<ClientsListScreen> {
   late ClientFilter _filter;
   final _searchCtrl = TextEditingController();
   String _query = '';
@@ -43,14 +41,18 @@ class _ClientsListScreenState
   void initState() {
     super.initState();
     _filter = widget.initialFilter;
-    _searchCtrl.addListener(
-        () => setState(() => _query = _searchCtrl.text.trim()));
+    _searchCtrl.addListener(() => setState(() => _query = _searchCtrl.text.trim()));
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(clientsProvider);
+    ref.invalidate(clientDebtSummariesProvider);
   }
 
   @override
@@ -66,7 +68,6 @@ class _ClientsListScreenState
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
-          // Búsqueda
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             child: TextField(
@@ -74,8 +75,7 @@ class _ClientsListScreenState
               style: AppTypography.bodyMedium.copyWith(color: AppColors.white),
               decoration: InputDecoration(
                 hintText: 'Buscar por nombre o teléfono...',
-                prefixIcon: Icon(
-                    PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular)),
+                prefixIcon: Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular)),
                 suffixIcon: _query.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close_rounded),
@@ -85,7 +85,6 @@ class _ClientsListScreenState
               ),
             ),
           ),
-          // Chips de filtro
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: SingleChildScrollView(
@@ -97,8 +96,7 @@ class _ClientsListScreenState
                           child: _FilterChip(
                             label: f.label,
                             isSelected: _filter == f,
-                            onTap: () =>
-                                setState(() => _filter = f),
+                            onTap: () => setState(() => _filter = f),
                           ),
                         ))
                     .toList(),
@@ -107,25 +105,30 @@ class _ClientsListScreenState
           ),
           const SizedBox(height: 8),
           Expanded(
-              child: _ClientsList(query: _query, filter: _filter)),
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              color: AppColors.vanilla,
+              backgroundColor: AppColors.blackSurface,
+              child: _ClientsList(query: _query, filter: _filter),
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .push(_slideUp(const AddClientScreen())),
+        onPressed: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddClientScreen()),
+          );
+          await _refresh();
+        },
         child: const Icon(Icons.add_rounded),
       ),
     );
   }
 }
 
-// ── Filter chip ───────────────────────────────────────
-
 class _FilterChip extends StatelessWidget {
-  const _FilterChip(
-      {required this.label,
-      required this.isSelected,
-      required this.onTap});
+  const _FilterChip({required this.label, required this.isSelected, required this.onTap});
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
@@ -136,17 +139,12 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.vanilla.withOpacity(0.15)
-              : AppColors.blackElevated,
+          color: isSelected ? AppColors.vanilla.withOpacity(0.15) : AppColors.blackElevated,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected
-                ? AppColors.vanilla.withOpacity(0.5)
-                : AppColors.white.withOpacity(0.12),
+            color: isSelected ? AppColors.vanilla.withOpacity(0.5) : AppColors.white.withOpacity(0.12),
           ),
         ),
         child: Text(
@@ -161,11 +159,8 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-// ── Lista filtrada ────────────────────────────────────
-
 class _ClientsList extends ConsumerWidget {
-  const _ClientsList(
-      {required this.query, required this.filter});
+  const _ClientsList({required this.query, required this.filter});
   final String query;
   final ClientFilter filter;
 
@@ -173,34 +168,27 @@ class _ClientsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summariesAsync = ref.watch(clientDebtSummariesProvider);
     return summariesAsync.when(
-      loading: () => const Padding(
-          padding: EdgeInsets.all(20), child: ShimmerLoading()),
-      error: (e, _) => Center(
-          child: Text('Error: $e', style: AppTypography.bodySmall)),
+      loading: () => const Padding(padding: EdgeInsets.all(20), child: ShimmerLoading()),
+      error: (e, _) => Center(child: Text('Error: $e', style: AppTypography.bodySmall)),
       data: (summaries) {
         var list = summaries.where((s) {
           if (query.isNotEmpty) {
             final q = query.toLowerCase();
-            if (!s.client.name.toLowerCase().contains(q) &&
-                !s.client.phone.contains(q)) return false;
+            if (!s.client.name.toLowerCase().contains(q) && !s.client.phone.contains(q)) return false;
           }
           return switch (filter) {
             ClientFilter.all => true,
             ClientFilter.withDebt => s.pendingAmount > 0,
             ClientFilter.overdue => s.lastDebtDate != null &&
-                DateFormatter.debtAgeStatus(s.lastDebtDate!) !=
-                    DebtAgeStatus.ok,
+                DateFormatter.debtAgeStatus(s.lastDebtDate!) != DebtAgeStatus.ok,
             ClientFilter.upToDate => s.pendingAmount == 0,
           };
         }).toList();
 
         if (list.isEmpty) {
           return EmptyState(
-            icon: PhosphorIcons.userCircle(
-                PhosphorIconsStyle.regular),
-            title: query.isNotEmpty
-                ? 'Sin resultados para "$query"'
-                : 'No hay clientes aquí',
+            icon: PhosphorIcons.userCircle(PhosphorIconsStyle.regular),
+            title: query.isNotEmpty ? 'Sin resultados para "$query"' : 'No hay clientes aquí',
             subtitle: query.isNotEmpty ? null : 'Probá con otro filtro',
           );
         }
@@ -212,8 +200,8 @@ class _ClientsList extends ConsumerWidget {
             summary: list[i],
             animationDelay: Duration(milliseconds: 40 * i),
             onTap: () => Navigator.of(context).push(
-                _fade(ClientDetailScreen(
-                    clientId: list[i].client.id))),
+              _fade(ClientDetailScreen(clientId: list[i].client.id)),
+            ),
           ),
         );
       },
@@ -222,18 +210,6 @@ class _ClientsList extends ConsumerWidget {
 }
 
 PageRoute<T> _fade<T>(Widget page) => PageRouteBuilder(
-      pageBuilder: (_, a, __) =>
-          FadeTransition(opacity: a, child: page),
+      pageBuilder: (_, a, __) => FadeTransition(opacity: a, child: page),
       transitionDuration: const Duration(milliseconds: 300),
-    );
-
-PageRoute<T> _slideUp<T>(Widget page) => PageRouteBuilder(
-      pageBuilder: (_, a, __) => SlideTransition(
-        position: Tween<Offset>(
-                begin: const Offset(0, 1), end: Offset.zero)
-            .animate(
-                CurvedAnimation(parent: a, curve: Curves.easeOut)),
-        child: page,
-      ),
-      transitionDuration: const Duration(milliseconds: 350),
     );
